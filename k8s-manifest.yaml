@@ -230,3 +230,11 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+          livenessProbe:
+            exec:
+              command:
+                - kill
+                - "-0"
+                - "1"
+            initialDelaySeconds: 10
+            periodSeconds: 10

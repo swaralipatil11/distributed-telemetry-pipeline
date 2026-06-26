@@ -40,13 +40,16 @@ for attempt in range(1, 11):
             bootstrap_servers=[KAFKA_BROKER],
             auto_offset_reset='earliest',
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            api_version=(3, 5, 0)  # Forces compatibility handshake
+            api_version=(3, 5, 0),  # Forces compatibility handshake
+            group_id='telemetry-worker-group',
+            enable_auto_commit=True
         )
-        print("[SUCCESS] Kafka Consumer listening on 'raw-telemetry' topic!")
+        print("[SUCCESS] Kafka Consumer listening on 'raw-telemetry' topic (Consumer Group: telemetry-worker-group)!")
         break
     except NoBrokersAvailable:
-        print(f"[RETRY {attempt}/10] Kafka isn't ready yet. Retrying in 5 seconds...")
-        time.sleep(5)
+        sleep_time = min(30, 2 ** attempt)  # Exponential backoff retry logic: 2s, 4s, 8s, 16s...
+        print(f"[RETRY {attempt}/10] Kafka isn't ready yet. Retrying in {sleep_time} seconds...")
+        time.sleep(sleep_time)
 
 if not consumer:
     print("[FATAL] Could not connect to Kafka Broker after multiple attempts.")
@@ -60,8 +63,21 @@ try:
         
         formatted_time = datetime.fromtimestamp(data['timestamp'], tz=timezone.utc)
         
-        if data['status'] == "CRITICAL":
-            print(f"⚠️  [ALERT] Instance {data['machine_id']} reports CRITICAL status!")
+        # Stream-based rule anomaly detection logic
+        is_anomaly = False
+        reasons = []
+        if data.get('cpu_utilization', 0.0) > 90.0:
+            is_anomaly = True
+            reasons.append(f"CPU utilization ({data['cpu_utilization']}%) exceeds threshold")
+        if data.get('memory_utilization', 0.0) > 90.0:
+            is_anomaly = True
+            reasons.append(f"Memory utilization ({data['memory_utilization']}%) exceeds threshold")
+        if data.get('status') == "CRITICAL":
+            is_anomaly = True
+            reasons.append("Critical status flag reported")
+
+        if is_anomaly:
+            print(f"⚠️  [ANOMALY DETECTED] Instance {data['machine_id']}: {', '.join(reasons)}")
 
         cursor.execute(
             "INSERT INTO metrics (machine_id, cpu_utilization, memory_utilization, status, timestamp) VALUES (%s, %s, %s, %s, %s)",
