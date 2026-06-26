@@ -215,6 +215,14 @@ spec:
               value: "kafka:9092"
             - name: DB_HOST
               value: "timescaledb"
+            - name: DB_USER
+              value: "postgres"
+            - name: DB_PASSWORD
+              value: "password"
+            - name: DB_NAME
+              value: "telemetry_db"
+            - name: DB_PORT
+              value: "5432"
           resources:
             limits:
               cpu: 250m

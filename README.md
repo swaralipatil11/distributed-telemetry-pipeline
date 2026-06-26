@@ -30,7 +30,7 @@ The architecture decouples telemetry reception, shock-absorbing message streamin
 
 ```
 .
-├── api-gateway/
+├── ingestion-api/
 │   ├── Dockerfile
 │   ├── go.mod
 │   └── main.go
@@ -55,7 +55,7 @@ Configure your shell to build images directly inside the Minikube Docker daemon 
 & minikube -p minikube docker-env --shell powershell | Invoke-Expression
 
 # Build the Go API Gateway container
-docker build -t telemetry-ingestion:v1 ./api-gateway
+docker build -t telemetry-ingestion:v1 ./ingestion-api
 
 # Build the Python Processing Worker container
 docker build -t telemetry-worker:v1 ./processing-worker
@@ -78,7 +78,7 @@ Deploy the telemetry tables and TimescaleDB hypertable extensions directly insid
 $DB_POD = (kubectl get pods -n telemetry-stack -l app=timescaledb -o jsonpath='{.items[0].metadata.name}')
 
 # Execute the SQL schema setup commands inside the container
-kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry-db -c "
+kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry_db -c "
 CREATE TABLE IF NOT EXISTS metrics (
     timestamp TIMESTAMPTZ NOT NULL,
     machine_id VARCHAR(50) NOT NULL,

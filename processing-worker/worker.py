@@ -2,23 +2,27 @@ import os
 import json
 import time
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timezone
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
+DB_NAME = os.getenv("DB_NAME", "telemetry_db")
+DB_PORT = os.getenv("DB_PORT", "5432")
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 
-print(f"[INFO] Initializing worker network mapping -> DB: {DB_HOST}, Kafka: {KAFKA_BROKER}")
+print(f"[INFO] Initializing worker network mapping -> DB: {DB_HOST}:{DB_PORT}/{DB_NAME}, Kafka: {KAFKA_BROKER}")
 
 # 1. Connect to the TimescaleDB Service
 try:
     db_conn = psycopg2.connect(
         host=DB_HOST,
-        database="telemetry_db",
-        user="postgres",
-        password="password",
-        port="5432"
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        port=DB_PORT
     )
     cursor = db_conn.cursor()
     print("[SUCCESS] Connected to TimescaleDB.")
@@ -54,7 +58,7 @@ try:
         data = message.value
         print(f"[PROCESSING] Received event from machine: {data['machine_id']}")
         
-        formatted_time = datetime.fromtimestamp(data['timestamp'])
+        formatted_time = datetime.fromtimestamp(data['timestamp'], tz=timezone.utc)
         
         if data['status'] == "CRITICAL":
             print(f"⚠️  [ALERT] Instance {data['machine_id']} reports CRITICAL status!")
