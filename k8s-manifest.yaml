@@ -5,6 +5,18 @@ metadata:
   labels:
     app.kubernetes.io/name: telemetry-pipeline
 ---
+# 0. DATABASE CREDENTIALS SECRET
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+  namespace: telemetry-stack
+type: Opaque
+stringData:
+  POSTGRES_USER: "postgres"
+  POSTGRES_PASSWORD: "password"
+  POSTGRES_DB: "telemetry_db"
+---
 # 1. TIMESCALEDB STATEFULSET (WITH PERSISTENCE)
 apiVersion: apps/v1
 kind: StatefulSet
@@ -33,11 +45,20 @@ spec:
               name: postgres
           env:
             - name: POSTGRES_USER
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
-              value: "telemetry_db"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_DB
           resources:
             limits:
               cpu: "1"
@@ -250,11 +271,20 @@ spec:
             - name: DB_HOST
               value: "timescaledb"
             - name: DB_USER
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_USER
             - name: DB_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_PASSWORD
             - name: DB_NAME
-              value: "telemetry_db"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: POSTGRES_DB
             - name: DB_PORT
               value: "5432"
           resources:

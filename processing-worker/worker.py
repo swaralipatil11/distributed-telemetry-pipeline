@@ -49,10 +49,26 @@ def connect_db():
             )
             cur = conn.cursor()
             print("[SUCCESS] Connected to TimescaleDB.")
+            
+            # Bootstrapping migration: ensure metrics table and hypertable exist
+            print("[INFO] Running database schema migrations...")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS metrics (
+                    timestamp TIMESTAMPTZ NOT NULL,
+                    machine_id VARCHAR(50) NOT NULL,
+                    cpu_utilization DOUBLE PRECISION NOT NULL,
+                    memory_utilization DOUBLE PRECISION NOT NULL,
+                    status VARCHAR(20) NOT NULL
+                );
+            """)
+            cur.execute("SELECT create_hypertable('metrics', 'timestamp', if_not_exists => TRUE);")
+            conn.commit()
+            print("[SUCCESS] Database schema migrations completed successfully.")
+            
             return conn, cur
         except Exception as e:
             sleep_time = min(30, 2 ** attempt)
-            print(f"[RETRY {attempt}/10] Database connection failed: {e}. Retrying in {sleep_time} seconds...")
+            print(f"[RETRY {attempt}/10] Database connection/migration failed: {e}. Retrying in {sleep_time} seconds...")
             time.sleep(sleep_time)
     print("[FATAL] Could not connect to TimescaleDB after multiple attempts.")
     sys.exit(1)
