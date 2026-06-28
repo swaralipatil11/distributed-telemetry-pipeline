@@ -30,9 +30,11 @@ The architecture decouples telemetry reception, shock-absorbing message streamin
 
 ```
 .
+├── docker-compose.yml
 ├── ingestion-api/
 │   ├── Dockerfile
 │   ├── go.mod
+│   ├── go.sum
 │   └── main.go
 ├── k8s-manifest.yaml
 ├── processing-worker/
@@ -129,5 +131,7 @@ kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry_db 
 
 ### Fault Tolerance & Backpressure Shock-Absorption
 * **Message Decoupling**: The Go Ingestion Gateway returns `202 Accepted` immediately upon writing the payload into Kafka's queue, preventing spikes in traffic from blocking client requests.
-* **Persistent Event Replay**: In the event of a TimescaleDB database maintenance window or network partition, Kafka buffers raw events on disk for up to the configured retention period. Once database service is restored, the Python Worker resumes reading from its last committed partition offset, guaranteeing zero data loss.
-* **Robust Handshake Protocol**: The Python processing worker initializes with a backoff retry mechanism (10 attempts spaced by 5 seconds) to handle Kafka and DB startup delays gracefully without failing pod initialization checks.
+* **At-Least-Once Delivery & Batch Committing**: The Python Processing Worker implements poll-based message batching and bulk DB transactions. Offsets are committed back to Kafka manually **only** after a database insert succeeds, guaranteeing zero data loss on database crash.
+* **Persistent Event Replay**: In the event of a TimescaleDB database maintenance window or network partition, Kafka buffers raw events on disk. Once database service is restored, the Python Worker's automatic reconnect loop re-establishes connection and inserts the pending batch.
+* **Stateful Storage & Configuration Isolation**: Database credentials are fully isolated via Kubernetes `Secret` resources, and TimescaleDB runs as a `StatefulSet` with Persistent Volume Claims (PVC) to guarantee metrics persist across container terminations.
+* **Graceful Lifecycles**: Both Go and Python containers intercept `SIGTERM`/`SIGINT` signals, cleanly draining in-flight metrics and closing system handles before exiting.
