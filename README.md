@@ -44,7 +44,20 @@ The architecture decouples telemetry reception, shock-absorbing message streamin
 
 ---
 
-## Deployment & Verification Playbook
+## Local Run with Docker Compose (Recommended for Local Dev)
+
+If you do not want to set up local Kubernetes / Minikube, you can launch the entire telemetry stack, including persistent volume storage for TimescaleDB and Kafka, using Docker Compose:
+
+```bash
+# Build and start all services (Go Ingestion, Python Worker, Kafka, TimescaleDB)
+docker compose up --build
+```
+
+Once all containers are running, the Ingestion Gateway is exposed at `http://localhost:30080` on your host system. You can skip directly to **Task 5: Launch Traffic Simulation** below.
+
+---
+
+## Deployment & Verification Playbook (Kubernetes)
 
 Perform these steps in a PowerShell terminal within the repository root directory.
 
@@ -62,7 +75,7 @@ docker build -t telemetry-worker:v1 ./processing-worker
 ```
 
 ### Task 2: Apply Kubernetes Cluster Resources
-Deploys Namespace, Services, Deployments, and routing configs:
+Deploys Namespace, Secret, Services, StatefulSet, Deployments, and routing configs:
 ```powershell
 # Deploy the stack to the cluster
 kubectl apply -f k8s-manifest.yaml
@@ -71,23 +84,16 @@ kubectl apply -f k8s-manifest.yaml
 kubectl get pods -n telemetry-stack -w
 ```
 
-### Task 3: Initialize Database Schema & Hypertable
-Deploy the telemetry tables and TimescaleDB hypertable extensions directly inside the running database pod:
+### Task 3: Database Schema Auto-Initialization (Automated)
+The Python Processing Worker automatically bootstraps the database schema (creating the `metrics` table and TimescaleDB hypertable extension) on startup. **No manual SQL runs are required.** 
+
+If you want to manually verify the schema or run custom statements inside the pod, you can retrieve the TimescaleDB pod name and run query client:
 ```powershell
 # Retrieve the TimescaleDB pod name
 $DB_POD = (kubectl get pods -n telemetry-stack -l app=timescaledb -o jsonpath='{.items[0].metadata.name}')
 
-# Execute the SQL schema setup commands inside the container
-kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry_db -c "
-CREATE TABLE IF NOT EXISTS metrics (
-    timestamp TIMESTAMPTZ NOT NULL,
-    machine_id VARCHAR(50) NOT NULL,
-    cpu_utilization DOUBLE PRECISION NOT NULL,
-    memory_utilization DOUBLE PRECISION NOT NULL,
-    status VARCHAR(20) NOT NULL
-);
-SELECT create_hypertable('metrics', 'timestamp', if_not_exists => TRUE);
-"
+# (Optional Verification) Connect to database CLI
+kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry_db
 ```
 
 ### Task 4: Expose the NodePort Port Bridge
@@ -110,8 +116,11 @@ Invoke-RestMethod -Uri "http://localhost:30080/telemetry" -Method Post -ContentT
 ### Task 6: Run SQL Warehouse Queries
 Verify metrics have processed through Kafka, triggered rules, and written to TimescaleDB:
 ```powershell
+# Get DB pod name (if not set)
+$DB_POD = (kubectl get pods -n telemetry-stack -l app=timescaledb -o jsonpath='{.items[0].metadata.name}')
+
 # Run SELECT query inside the TimescaleDB pod
-kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry-db -c "SELECT * FROM metrics ORDER BY timestamp DESC LIMIT 10;"
+kubectl exec -it $DB_POD -n telemetry-stack -- psql -U postgres -d telemetry_db -c "SELECT * FROM metrics ORDER BY timestamp DESC LIMIT 10;"
 ```
 
 ---
