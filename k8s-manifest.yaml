@@ -5,14 +5,16 @@ metadata:
   labels:
     app.kubernetes.io/name: telemetry-pipeline
 ---
+# 1. TIMESCALEDB STATEFULSET (WITH PERSISTENCE)
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: timescaledb
   namespace: telemetry-stack
   labels:
     app: timescaledb
 spec:
+  serviceName: "timescaledb"
   replicas: 1
   selector:
     matchLabels:
@@ -53,6 +55,17 @@ spec:
               port: 5432
             initialDelaySeconds: 5
             periodSeconds: 5
+          volumeMounts:
+            - name: timescaledb-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: timescaledb-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
@@ -70,7 +83,19 @@ spec:
     app: timescaledb
   type: ClusterIP
 ---
-# 2. APACHE KAFKA BROKER ARCHITECTURE (REPAIRED & LEAN)
+# 2. APACHE KAFKA BROKER ARCHITECTURE (PERSISTENT & RESILIENT)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-pvc
+  namespace: telemetry-stack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -109,7 +134,14 @@ spec:
         - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
           value: "1"
         - name: KAFKA_LOG_DIRS
-          value: "/tmp/kraft-combined-logs"
+          value: "/var/lib/kafka/data"
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /var/lib/kafka/data
+      volumes:
+      - name: kafka-data
+        persistentVolumeClaim:
+          claimName: kafka-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -160,12 +192,14 @@ spec:
               cpu: 100m
               memory: 128Mi
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -233,8 +267,11 @@ spec:
           livenessProbe:
             exec:
               command:
-                - kill
-                - "-0"
-                - "1"
+                - python
+                - -c
+                - |
+                  import os, time
+                  if not os.path.exists('/tmp/healthy') or time.time() - os.path.getmtime('/tmp/healthy') > 60:
+                      exit(1)
             initialDelaySeconds: 10
             periodSeconds: 10

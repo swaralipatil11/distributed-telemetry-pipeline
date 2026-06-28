@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -65,6 +66,24 @@ func main() {
 		}
 
 		c.JSON(http.StatusAccepted, gin.H{"status": "Data sent to queue successfully!"})
+	})
+
+	// Define our health check endpoint
+	r.GET("/healthz", func(c *gin.Context) {
+		// Attempt a quick TCP connection to Kafka broker to check health
+		conn, err := net.DialTimeout("tcp", kafkaBroker, 2*time.Second)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "unhealthy",
+				"error":  "Failed to connect to Kafka Broker: " + err.Error(),
+			})
+			return
+		}
+		conn.Close()
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "healthy",
+		})
 	})
 
 	// Run our server on port 8080
